@@ -4,10 +4,14 @@ import android.app.Activity
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Matrix
+import android.media.ExifInterface
 import android.os.Bundle
 import android.provider.MediaStore
 import android.support.v4.content.FileProvider
 import android.support.v7.app.AppCompatActivity
+import android.util.SparseIntArray
+import android.view.Surface
 import android.widget.Button
 import android.widget.ImageView
 import android.widget.TextView
@@ -26,6 +30,14 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val REQUEST_IMAGE_CAPTURE = 1
+        private val ORIENTATIONS = SparseIntArray()
+
+        init {
+            ORIENTATIONS.append(Surface.ROTATION_0, 90)
+            ORIENTATIONS.append(Surface.ROTATION_90, 0)
+            ORIENTATIONS.append(Surface.ROTATION_180, 270)
+            ORIENTATIONS.append(Surface.ROTATION_270, 180)
+        }
     }
 
     lateinit var prediction: TextView
@@ -80,9 +92,13 @@ class MainActivity : AppCompatActivity() {
         val targetW = pictureView.getWidth()
         val targetH = pictureView.getHeight()
 
+        val ei = ExifInterface(photoPath)
+        val exifResult = ei.getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)
+
         // Get the dimensions of the bitmap
         val bmOptions = BitmapFactory.Options()
         bmOptions.inJustDecodeBounds = true
+
         BitmapFactory.decodeFile(photoPath, bmOptions)
         val photoW = bmOptions.outWidth
         val photoH = bmOptions.outHeight
@@ -95,10 +111,36 @@ class MainActivity : AppCompatActivity() {
         bmOptions.inSampleSize = scaleFactor
         bmOptions.inPurgeable = true
 
-        val bitmap = BitmapFactory.decodeFile(photoPath, bmOptions)
+        var bitmap = BitmapFactory.decodeFile(photoPath, bmOptions)
+
+        bitmap = rotateImage(bitmap, exifResult)
         pictureView.setImageBitmap(bitmap)
 
         return bitmap
+    }
+
+    private fun rotateImage(bm: Bitmap, exifResult: Int): Bitmap {
+        val rotation = when (exifResult) {
+            ExifInterface.ORIENTATION_ROTATE_180 -> {
+                ORIENTATIONS.get(270)
+            }
+            ExifInterface.ORIENTATION_ROTATE_270 -> {
+                ORIENTATIONS.get(180)
+            }
+            ExifInterface.ORIENTATION_ROTATE_90 -> {
+                ORIENTATIONS.get(0)
+            }
+            else -> {
+                ORIENTATIONS.get(90)
+            }
+        }
+        val matrix = Matrix()
+        matrix.postRotate(rotation.toFloat())
+        val rotatedImg = Bitmap.createBitmap(bm, 0, 0, bm.width, bm.height, matrix, true)
+        if (rotatedImg != bm) {
+            bm.recycle()
+        }
+        return rotatedImg
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
